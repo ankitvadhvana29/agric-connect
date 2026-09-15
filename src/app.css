@@ -850,4 +850,177 @@ button {
 @keyframes popupSlide {
     from { opacity: 0; transform: translateY(20px) scale(0.95); }
     to { opacity: 1; transform: translateY(0) scale(1); }
-}
+}
+
+/* ============================================================
+   LOGIN PAGE — Full Page Layout
+   ============================================================ */
+.login-page-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: calc(100vh - 64px);
+    width: 100%;
+    background: #f4f7f6;
+}
+
+.login-page-left {
+    background: linear-gradient(145deg, #14532d 0%, #15803d 50%, #16a34a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 2.5rem;
+}
+
+.login-brand-panel {
+    max-width: 420px;
+}
+
+.login-page-right {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 2.5rem;
+    overflow-y: auto;
+}
+
+.login-form-card {
+    background: white;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    padding: 2rem;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+/* Hide main-content padding when showing login page */
+.main-content:has(.login-page-container) {
+    padding: 0;
+    max-width: 100%;
+}
+
+/* ============================================================
+   VOICE MIC BUTTON — Pulse animation
+   ============================================================ */
+@keyframes pulse-mic {
+    0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+    70%  { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* ============================================================
+   RESPONSIVE — Mobile & Tablet
+   ============================================================ */
+
+/* Login page: stack on mobile */
+@media (max-width: 768px) {
+    .login-page-container {
+        grid-template-columns: 1fr;
+        min-height: auto;
+    }
+
+    .login-page-left {
+        padding: 2rem 1.5rem;
+    }
+
+    .login-page-right {
+        padding: 1.5rem 1rem;
+    }
+
+    .login-form-card {
+        padding: 1.5rem 1rem;
+        border-radius: 12px;
+    }
+}
+
+/* Navbar: compress on small screens */
+@media (max-width: 900px) {
+    .nav-container {
+        gap: 0.35rem;
+        padding: 0.4rem 0.75rem;
+    }
+
+    .nav-btn span {
+        display: none;
+    }
+
+    .nav-btn {
+        padding: 0.4rem 0.5rem;
+    }
+
+    .nav-btn svg {
+        margin-right: 0;
+    }
+
+    .nav-brand span {
+        font-size: 1rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .nav-container {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 0.5rem;
+        min-height: auto;
+    }
+
+    .nav-links {
+        width: 100%;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 4px;
+    }
+
+    .main-content {
+        padding: 1rem 0.75rem;
+    }
+
+    /* Marketplace grid — single column on very small screens */
+    .marketplace-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* Dashboard stack */
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    /* Product card images smaller on mobile */
+    .product-image {
+        height: 160px;
+    }
+
+    /* Chat container height on mobile */
+    .fullscreen-chatbot {
+        min-height: 450px;
+    }
+
+    .floating-ai-popup {
+        width: calc(100vw - 32px);
+    }
+
+    .floating-ai-fab .fab-label {
+        display: none;
+    }
+
+    .floating-ai-fab {
+        border-radius: 50%;
+        width: 52px;
+        height: 52px;
+        padding: 0;
+        justify-content: center;
+    }
+}
+
+/* Tablet: 2-column marketplace grid */
+@media (min-width: 641px) and (max-width: 1024px) {
+    .marketplace-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+

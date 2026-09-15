@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
 import {
-  Leaf, Upload, Camera, CheckCircle2, AlertCircle, X,
-  MapPin, DollarSign, Package, Sparkles
+  Leaf, CheckCircle2, AlertCircle, X,
+  MapPin, Package, Camera, Upload, Trash2
 } from 'lucide-react';
+
+
 import api from '../services/api';
 
 const SAURASHTRA_TALUKAS = [
@@ -33,6 +35,7 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
+
   if (!isOpen) return null;
 
   if (currentUser?.role === 'consumer') {
@@ -56,21 +59,48 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
     );
   }
 
-  const handleImageChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImagePreview(URL.createObjectURL(file));
-    }
+  // Auto-assign category-based image (no manual upload needed)
+  const getCategoryImage = (cat, productName) => {
+    const n = (productName || '').toLowerCase();
+    const c = (cat || '').toLowerCase();
+
+    if (n.includes('chilli') || n.includes('mircha') || n.includes('મરચ')) return 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('cumin') || n.includes('jeera') || n.includes('જીરૂ')) return 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('groundnut') || n.includes('peanut') || n.includes('મગફળ')) return 'https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('cotton') || n.includes('kapas') || n.includes('કપાસ')) return 'https://images.unsplash.com/photo-1606041008023-472dfb5e530f?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('wheat') || n.includes('ghau') || n.includes('ઘઉ')) return 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('sesame') || n.includes('til') || n.includes('તલ')) return 'https://images.unsplash.com/photo-1612187029216-e4c0b3424d77?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('mustard') || n.includes('sarson') || n.includes('સરસ')) return 'https://images.unsplash.com/photo-1599909631359-a4ee6a5c6c00?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('coriander') || n.includes('dhana') || n.includes('ધાણ')) return 'https://images.unsplash.com/photo-1615485500704-8e990f9900f7?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('bajra') || n.includes('bajri') || n.includes('બાજર')) return 'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('jowar') || n.includes('jwari') || n.includes('જુવ')) return 'https://images.unsplash.com/photo-1651956164453-7da9c7e1a7a5?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('tuvar') || n.includes('toor') || n.includes('dal') || n.includes('તુ')) return 'https://images.unsplash.com/photo-1585136917228-a2e1e65b7ef7?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('moong') || n.includes('mung') || n.includes('મગ')) return 'https://images.unsplash.com/photo-1619896482999-8f97ebfe9c3f?auto=format&fit=crop&q=80&w=600';
+    if (n.includes('garlic') || n.includes('lasun') || n.includes('લસ')) return 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&q=80&w=600';
+
+    // Category fallback images
+    if (c.includes('spice')) return 'https://images.unsplash.com/photo-1532336414038-cf19250c5757?auto=format&fit=crop&q=80&w=600';
+    if (c.includes('oil')) return 'https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?auto=format&fit=crop&q=80&w=600';
+    if (c.includes('grain') || c.includes('cereal')) return 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&q=80&w=600';
+    if (c.includes('pulse') || c.includes('legume')) return 'https://images.unsplash.com/photo-1585136917228-a2e1e65b7ef7?auto=format&fit=crop&q=80&w=600';
+    if (c.includes('cotton') || c.includes('cash')) return 'https://images.unsplash.com/photo-1606041008023-472dfb5e530f?auto=format&fit=crop&q=80&w=600';
+
+    return 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600';
   };
 
-  const handleQuickCropSelect = (crop) => {
-    setName(crop.name);
-    setCategory(crop.category);
-    setVariety(crop.variety);
-    setPrice(crop.price);
-    setUnit(crop.unit);
-    setTaluka(crop.taluka);
-    setImagePreview(crop.image);
+  const handleImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image size exceeds 5MB. Please choose a smaller photo.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -85,6 +115,7 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
     setLoading(true);
 
     const selectedTalukaObj = SAURASHTRA_TALUKAS.find((t) => t.taluka === taluka);
+    const finalProduceImage = imagePreview || getCategoryImage(category, name);
 
     const newProduct = {
       _id: `prod_${Date.now()}`,
@@ -104,7 +135,7 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
       },
       images: [
         {
-          url: imagePreview || 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=600',
+          url: finalProduceImage,
           caption: `${name} harvested at ${taluka}`,
           isPrimary: true,
         },
@@ -112,12 +143,13 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
       aiGrading: {
         qualityGrade: 'Grade A',
         confidenceScore: '96%',
-        suggestedPriceRange: { min: Math.round(price * 0.95), max: Math.round(price * 1.1) },
+        suggestedPriceRange: { min: Math.round(parseFloat(price) * 0.95), max: Math.round(parseFloat(price) * 1.1) },
         marketTrend: '+8% steady Saurashtra APMC Mandi demand',
       },
       isVerified: true,
       status: 'Available',
     };
+
 
     // Attempt backend save
     try {
@@ -136,6 +168,7 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
       onClose();
     }, 2000);
   };
+
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -181,99 +214,6 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            {/* Quick Demo Autofill Buttons for Saurashtra Crops */}
-            <div style={{ marginBottom: '1rem', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <p style={{ fontSize: '0.75rem', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>
-                ⚡ Quick Fill Saurashtra Special Produce:
-              </p>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleQuickCropSelect({
-                      name: 'Organic Cumin Seeds (સૌરાષ્ટ્ર જીરું / Jeera)',
-                      category: 'Spices',
-                      variety: 'Gujarat Cumin-4 Special',
-                      price: '380',
-                      unit: 'kg',
-                      taluka: 'Jamnagar Rural',
-                      image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=600',
-                    })
-                  }
-                  style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer' }}
-                >
-                  🌿 Jamnagar Cumin (Jeera)
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleQuickCropSelect({
-                      name: 'Gondal Red Chillies (ગોંડલ લાલ મરચા)',
-                      category: 'Spices',
-                      variety: 'Resham Patti Special',
-                      price: '240',
-                      unit: 'kg',
-                      taluka: 'Gondal',
-                      image: 'https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&q=80&w=600',
-                    })
-                  }
-                  style={{ fontSize: '0.72rem', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer' }}
-                >
-                  🌶️ Gondal Chillies
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleQuickCropSelect({
-                      name: 'Saurashtra Bold Groundnut (મગફળી)',
-                      category: 'Oilseeds',
-                      variety: 'GG-20 Saurashtra Bold',
-                      price: '75',
-                      unit: 'kg',
-                      taluka: 'Gondal',
-                      image: 'https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?auto=format&fit=crop&q=80&w=600',
-                    })
-                  }
-                  style={{ fontSize: '0.72rem', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer' }}
-                >
-                  🥜 Saurashtra Groundnut
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleQuickCropSelect({
-                      name: 'Saurashtra Shankar-6 Cotton (સૌરાષ્ટ્ર કપાસ)',
-                      category: 'Cotton & Cash Crops',
-                      variety: 'Shankar-6 Long Staple',
-                      price: '135',
-                      unit: 'kg',
-                      taluka: 'Amreli',
-                      image: 'https://images.unsplash.com/photo-1606041008023-472dfb5e530f?auto=format&fit=crop&q=80&w=600',
-                    })
-                  }
-                  style={{ fontSize: '0.72rem', background: '#e0e7ff', color: '#3730a3', border: '1px solid #c7d2fe', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer' }}
-                >
-                  ☁️ Shankar Cotton
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleQuickCropSelect({
-                      name: 'Saurashtra Bhalia Sharbati Wheat (ભાલિયા ઘઉં)',
-                      category: 'Grains & Cereals',
-                      variety: 'Dawoodkhani Bhalia Organic',
-                      price: '52',
-                      unit: 'kg',
-                      taluka: 'Gondal',
-                      image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&q=80&w=600',
-                    })
-                  }
-                  style={{ fontSize: '0.72rem', background: '#fef9c3', color: '#854d0e', border: '1px solid #fef08a', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer' }}
-                >
-                  🌾 Bhalia Wheat
-                </button>
-              </div>
-            </div>
 
             {error && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fef2f2', color: '#dc2626', padding: '8px', borderRadius: '6px', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
@@ -395,69 +335,105 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
               </select>
             </div>
 
-            {/* Produce Photo Upload with Live Preview */}
+            {/* Produce Photo Upload Option */}
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '2px' }}>
-                Produce Photo (ગ્રાહક જોઈ શકે તેવો ફોટો):
+              <label style={{ fontSize: '0.75rem', fontWeight: '600', color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Camera size={14} style={{ color: '#16a34a' }} />
+                  પાકનો ફોટો ઉમેરો (Produce Photo):
+                </span>
+                <span style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 'normal' }}>
+                  (વૈકલ્પિક / Optional)
+                </span>
               </label>
 
               <input
                 type="file"
                 accept="image/*"
                 ref={fileInputRef}
-                onChange={handleImageChange}
+                onChange={handleImageFileChange}
                 style={{ display: 'none' }}
               />
 
               {imagePreview ? (
-                <div style={{ position: 'relative', textAlign: 'center', marginBottom: '6px' }}>
+                <div style={{
+                  position: 'relative',
+                  borderRadius: '8px',
+                  border: '1px solid #86efac',
+                  background: '#f0fdf4',
+                  padding: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}>
                   <img
                     src={imagePreview}
                     alt="Produce preview"
-                    style={{ maxHeight: '120px', borderRadius: '6px', objectFit: 'cover', margin: '0 auto' }}
+                    style={{
+                      width: '64px',
+                      height: '64px',
+                      borderRadius: '6px',
+                      objectFit: 'cover',
+                      border: '1px solid #d1d5db'
+                    }}
                   />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '0.8rem', fontWeight: '600', color: '#166534', margin: 0 }}>
+                      ✓ ફોટો પસંદ થયો (Photo selected)
+                    </p>
+                    <p style={{ fontSize: '0.7rem', color: '#6b7280', margin: '2px 0 0' }}>
+                      ગ્રાહક આ ફોટો જોઈ શકશે
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setImagePreview(null)}
                     style={{
-                      position: 'absolute',
-                      top: '4px',
-                      right: '25%',
-                      background: 'rgba(0,0,0,0.6)',
-                      color: 'white',
-                      borderRadius: '50%',
-                      padding: '2px 6px',
-                      fontSize: '0.75rem',
-                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: '#fee2e2',
+                      color: '#dc2626',
+                      border: '1px solid #fca5a5',
+                      borderRadius: '6px',
+                      padding: '4px 8px',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      fontWeight: '500'
                     }}
+                    title="Remove Photo"
                   >
-                    ✕
+                    <Trash2 size={13} /> કાઢો
                   </button>
                 </div>
               ) : (
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   style={{
-                    border: '2px dashed #cbd5e1',
+                    border: '2px dashed #86efac',
                     borderRadius: '8px',
-                    padding: '1rem',
+                    padding: '0.85rem',
                     textAlign: 'center',
                     cursor: 'pointer',
-                    background: '#f8fafc',
+                    background: '#f0fdf4',
+                    transition: 'all 0.2s',
                   }}
+                  onMouseOver={(e) => (e.currentTarget.style.borderColor = '#16a34a')}
+                  onMouseOut={(e) => (e.currentTarget.style.borderColor = '#86efac')}
                 >
-                  <Camera size={28} style={{ color: '#94a3b8', margin: '0 auto 4px' }} />
-                  <p style={{ fontSize: '0.8rem', color: '#475569', fontWeight: '500' }}>
-                    Click to upload fresh crop photo or take picture
+                  <Upload size={22} style={{ color: '#16a34a', margin: '0 auto 4px' }} />
+                  <p style={{ fontSize: '0.82rem', color: '#166534', fontWeight: '600', margin: 0 }}>
+                    ફોટો અપલોડ કરવા અહીં ક્લિક કરો (Upload Crop Photo)
                   </p>
-                  <p style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                    JPG, PNG or WEBP (Max 5MB)
+                  <p style={{ fontSize: '0.7rem', color: '#6b7280', margin: '2px 0 0' }}>
+                    JPG, PNG, WEBP (જો ફોટો નહિ નાખો તો પાક મુજબ ઓટોમેટિક ફોટો આવશે)
                   </p>
                 </div>
               )}
             </div>
 
             {/* Submit Button */}
+
             <div className="modal-actions">
               <button type="button" onClick={onClose} className="modal-btn btn-outline">
                 Cancel

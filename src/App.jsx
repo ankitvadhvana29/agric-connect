@@ -17,8 +17,18 @@ import KYCPortal from './components/KYCPortal';
 import Marketplace from './components/Marketplace';
 import TransparencyModal from './components/TransparencyModal';
 import UPIPaymentModal from './components/UPIPaymentModal';
-import LoginModal from './components/LoginModal';
+import LoginPage from './components/LoginPage';
 import FarmerSellModal from './components/FarmerSellModal';
+
+// Load custom products from localStorage on startup
+function loadCustomProducts() {
+  try {
+    const stored = localStorage.getItem('agriconnect_custom_products');
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -27,15 +37,14 @@ export default function App() {
   // User State
   const [currentUser, setCurrentUser] = useState(() => api.getCurrentUser());
 
-  // Newly added farmer produce items (stored locally for instant marketplace update)
-  const [customProducts, setCustomProducts] = useState([]);
+  // Farmer-listed products persisted in localStorage
+  const [customProducts, setCustomProducts] = useState(() => loadCustomProducts());
 
   // Modals state
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-  const [paymentDetails, setPaymentDetails] = useState({ amount: 650, note: 'AgriConnect Saurashtra Produce Order' });
+  const [paymentDetails, setPaymentDetails] = useState({ amount: 650, note: 'AgriConnect Saurashtra Produce Order', quantity: 1 });
   const [isTransparencyOpen, setIsTransparencyOpen] = useState(false);
   const [transparencyProduct, setTransparencyProduct] = useState({ id: 'prod_02', name: 'Gondal Resham Patti Red Chillies' });
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isFarmerSellOpen, setIsFarmerSellOpen] = useState(false);
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState(false);
 
@@ -48,14 +57,17 @@ export default function App() {
   }, []);
 
   const handleOpenPayment = (amount = 650, note = 'AgriConnect Saurashtra Produce Order') => {
-    setPaymentDetails({ amount, note });
+    setPaymentDetails({ amount, note, quantity: 1 });
     setIsPaymentOpen(true);
   };
 
-  const handleOpenPaymentWithProduct = (product) => {
+  // Accepts product + quantity, computes total
+  const handleOpenPaymentWithProduct = (product, quantity = 1) => {
+    const qty = Math.max(1, parseInt(quantity) || 1);
     setPaymentDetails({
-      amount: product.price,
-      note: `Order: ${product.name} from ${product.farmer?.fullName || 'Farmer'} (${product.locationTaluka || 'Saurashtra'})`,
+      amount: product.price * qty,
+      note: `Order: ${product.name} × ${qty} ${product.unit || 'kg'} from ${product.farmer?.fullName || 'Farmer'} (${product.locationTaluka || 'Saurashtra'})`,
+      quantity: qty,
     });
     setIsPaymentOpen(true);
   };
@@ -70,13 +82,45 @@ export default function App() {
     setCurrentUser(null);
   };
 
+  // Guard: only farmers can open sell modal; non-logged-in users go to login page
+  const handleOpenFarmerSell = () => {
+    if (!currentUser) {
+      setCurrentView('login');
+      return;
+    }
+    if (currentUser.role === 'consumer') {
+      // Consumer sees a blocked message in FarmerSellModal — still open it so they see the message
+      setIsFarmerSellOpen(true);
+      return;
+    }
+    setIsFarmerSellOpen(true);
+  };
+
   const handleProductCreated = (newProduct) => {
-    setCustomProducts((prev) => [newProduct, ...prev]);
+    setCustomProducts((prev) => {
+      const updated = [newProduct, ...prev];
+      // Persist to localStorage so products survive page refresh
+      try {
+        localStorage.setItem('agriconnect_custom_products', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  // Login success handler — navigate back to dashboard
+  const handleLoginSuccess = (user) => {
+    setCurrentUser(user);
+    setCurrentView('dashboard');
+  };
+
+  // Open login page
+  const handleOpenLogin = () => {
+    setCurrentView('login');
   };
 
   return (
     <div className="app-container">
-      {/* Navbar with Sell Option (Feature 8, 11, 12) */}
+      {/* Navbar */}
       <Navbar
         currentView={currentView}
         setView={setCurrentView}
@@ -84,13 +128,23 @@ export default function App() {
         setLang={setLang}
         t={t}
         currentUser={currentUser}
-        onOpenLogin={() => setIsLoginOpen(true)}
+        onOpenLogin={handleOpenLogin}
         onLogout={handleLogout}
-        onOpenFarmerSell={() => setIsFarmerSellOpen(true)}
+        onOpenFarmerSell={handleOpenFarmerSell}
       />
 
       {/* Main App Content */}
       <main className="main-content">
+
+        {/* ================= VIEW: LOGIN PAGE ================= */}
+        {currentView === 'login' && (
+          <LoginPage
+            onLoginSuccess={handleLoginSuccess}
+            onBack={() => setCurrentView('dashboard')}
+            t={t}
+          />
+        )}
+
         {/* ================= VIEW 1: DASHBOARD ================= */}
         {currentView === 'dashboard' && (
           <div>
@@ -108,7 +162,7 @@ export default function App() {
                 {/* Direct Sell Produce Action (Farmers Only - Hidden for Consumers) */}
                 {currentUser?.role !== 'consumer' && (
                   <button
-                    onClick={() => setIsFarmerSellOpen(true)}
+                    onClick={handleOpenFarmerSell}
                     className="login-btn"
                     style={{
                       display: 'flex',
@@ -143,6 +197,7 @@ export default function App() {
                 <AIChatbot
                   t={t}
                   lang={lang}
+                  setLang={setLang}
                   selectedTaluka={currentUser?.taluka || 'Gondal'}
                 />
 
@@ -198,7 +253,7 @@ export default function App() {
               {/* Right Column */}
               <div className="dashboard-col">
                 {currentUser?.role === 'consumer' ? (
-                  /* Consumer Portal Card: Buying & Escrow Highlights (No Sell Option) */
+                  /* Consumer Portal Card */
                   <div
                     className="card"
                     style={{
@@ -238,14 +293,9 @@ export default function App() {
                       onClick={() => setCurrentView('marketplace')}
                       className="scan-btn"
                       style={{
-                        width: '100%',
-                        backgroundColor: '#2563eb',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        padding: '10px',
-                        fontSize: '0.9rem',
+                        width: '100%', backgroundColor: '#2563eb',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        gap: '8px', padding: '10px', fontSize: '0.9rem',
                       }}
                     >
                       <span>🛒 Browse Fresh Produce (ખરીદી કરો)</span>
@@ -290,17 +340,12 @@ export default function App() {
                     </div>
 
                     <button
-                      onClick={() => setIsFarmerSellOpen(true)}
+                      onClick={handleOpenFarmerSell}
                       className="scan-btn"
                       style={{
-                        width: '100%',
-                        backgroundColor: '#15803d',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        padding: '10px',
-                        fontSize: '0.9rem',
+                        width: '100%', backgroundColor: '#15803d',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        gap: '8px', padding: '10px', fontSize: '0.9rem',
                       }}
                     >
                       <span>🌾 List Your Produce for Sale</span>
@@ -332,15 +377,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* Feature 7, 10: Marketplace Grid with Customer Images & Transparency */}
             <Marketplace
               t={t}
               currentUser={currentUser}
               onOpenTransparency={handleOpenTransparency}
               onOpenPaymentWithProduct={handleOpenPaymentWithProduct}
-              onOpenFarmerSell={() => setIsFarmerSellOpen(true)}
+              onOpenFarmerSell={handleOpenFarmerSell}
               selectedTaluka={currentUser?.taluka || 'Gondal'}
               customProducts={customProducts}
+              onOpenLogin={handleOpenLogin}
             />
           </div>
         )}
@@ -359,6 +404,7 @@ export default function App() {
             <AIChatbot
               t={t}
               lang={lang}
+              setLang={setLang}
               selectedTaluka={currentUser?.taluka || 'Gondal'}
             />
           </div>
@@ -432,35 +478,31 @@ export default function App() {
         t={t}
       />
 
-      <LoginModal
-        isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
-        onLoginSuccess={(user) => setCurrentUser(user)}
-        t={t}
-      />
-
-      {/* Floating Kisan AI Assistant Launcher (Available Across All Pages) */}
-      <div className="floating-ai-launcher">
-        {isFloatingChatOpen && (
-          <div className="floating-ai-popup">
-            <AIChatbot
-              t={t}
-              lang={lang}
-              selectedTaluka={currentUser?.taluka || 'Gondal'}
-              isFloating={true}
-              onClose={() => setIsFloatingChatOpen(false)}
-            />
-          </div>
-        )}
-        <button
-          onClick={() => setIsFloatingChatOpen(!isFloatingChatOpen)}
-          className="floating-ai-fab"
-          title="Open Kisan AI Assistant (Weather & Current Affairs)"
-        >
-          <Bot size={22} />
-          <span className="fab-label">Ask AI</span>
-        </button>
-      </div>
+      {/* Floating Kisan AI Assistant */}
+      {currentView !== 'login' && (
+        <div className="floating-ai-launcher">
+          {isFloatingChatOpen && (
+            <div className="floating-ai-popup">
+              <AIChatbot
+                t={t}
+                lang={lang}
+                setLang={setLang}
+                selectedTaluka={currentUser?.taluka || 'Gondal'}
+                isFloating={true}
+                onClose={() => setIsFloatingChatOpen(false)}
+              />
+            </div>
+          )}
+          <button
+            onClick={() => setIsFloatingChatOpen(!isFloatingChatOpen)}
+            className="floating-ai-fab"
+            title="Open Kisan AI Assistant (Weather & Current Affairs)"
+          >
+            <Bot size={22} />
+            <span className="fab-label">Ask AI</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

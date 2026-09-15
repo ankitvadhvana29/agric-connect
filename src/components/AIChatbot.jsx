@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bot, Send, Sparkles, CloudSun, Newspaper, ShieldCheck,
-  RefreshCw, ChevronRight, User, HelpCircle, X, Maximize2, Minimize2
+  RefreshCw, User, X, Mic, MicOff, Volume2, VolumeX
 } from 'lucide-react';
 import api from '../services/api';
 
@@ -9,7 +9,7 @@ const QUICK_PROMPTS = [
   {
     topic: 'weather',
     label: '🌦️ Weather & Rain in Gondal',
-    query: 'What is today\'s agricultural weather forecast, rain probability, and humidity in Gondal and Rajkot?',
+    query: "What is today's agricultural weather forecast, rain probability, and humidity in Gondal and Rajkot?",
   },
   {
     topic: 'pest',
@@ -24,7 +24,7 @@ const QUICK_PROMPTS = [
   {
     topic: 'weather',
     label: '💧 Spraying & Harvesting Advisory',
-    query: 'Is today\'s weather suitable for pesticide spraying and groundnut/chilli harvesting in Saurashtra?',
+    query: "Is today's weather suitable for pesticide spraying and groundnut/chilli harvesting in Saurashtra?",
   },
   {
     topic: 'schemes',
@@ -43,21 +43,65 @@ const QUICK_PROMPTS = [
   },
 ];
 
-export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', isFloating = false, onClose }) {
+// Language code mapping for Web Speech API
+const LANG_CODES = {
+  en: 'en-IN',
+  gu: 'gu-IN',
+  hi: 'hi-IN',
+  mr: 'mr-IN',
+};
+
+// Detect language from text using Unicode ranges
+function detectLanguage(text) {
+  if (!text || text.trim().length < 2) return null;
+  const gujaratiRange = /[\u0A80-\u0AFF]/;
+  const devanagariRange = /[\u0900-\u097F]/;
+  if (gujaratiRange.test(text)) return 'gu';
+  if (devanagariRange.test(text)) {
+    // Differentiate Marathi vs Hindi by common words
+    const marathiWords = ['आहे', 'करा', 'सांगा', 'काय', 'तुम्ही', 'मला', 'शेतकरी', 'पाऊस'];
+    if (marathiWords.some((w) => text.includes(w))) return 'mr';
+    return 'hi';
+  }
+  return 'en';
+}
+
+export default function AIChatbot({ t, lang = 'en', setLang, selectedTaluka = 'Gondal', isFloating = false, onClose }) {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
       sender: 'bot',
       text: lang === 'gu'
-        ? `નમસ્તે! હું **કિસાન AI સહાયક** છું. 🌾\n\nહું તમને **આજનું હવામાન, વરસાદની આગાહી, ૨૦૨૬ ના ટેકાના ભાવ (MSP), સરકારી સહાય યોજનાઓ (PM-KISAN, i-Khedut)** તેમજ **AGMARK ગુણવત્તા નિયમો** વિશે તાજી માહિતી આપી શકું છું.\n\nતમે નીચે આપેલા કોઈપણ પ્રશ્ન પર ક્લિક કરી શકો છો અથવા તમારો પ્રશ્ન ટાઈપ કરી શકો છો.`
-        : `Namaste! I am your **Kisan AI Assistant** 🌾\n\nI provide instant intelligence on:\n- 🌦️ **Agricultural Weather & Rain Alerts** for Saurashtra\n- 📰 **Current Affairs & 2026 MSP Rates** (Groundnut, Cotton, Wheat, Spices)\n- 🏛️ **Government Schemes** (PM-KISAN, PMFBY, i-Khedut solar pump subsidies)\n- 🔬 **AGMARK & Crop Quality Standards**\n\nHow can I help you today? Feel free to ask or pick a suggestion below!`,
+        ? `નમસ્તે! હું **કિસાન AI સહાયક** છું. 🌾\n\nહું તમને **આજનું હવામાન, ૨૦૨૬ ના ટેકાના ભાવ (MSP), સરકારી સહાય યોજનાઓ** અને **AGMARK ગુણવત્તા** વિશે માહિતી આપી શકું છું. 🎤 **Voice** અથવા ⌨️ **Type** કરીને પૂછો!`
+        : lang === 'hi'
+        ? `नमस्ते! मैं **किसान AI सहायक** हूं। 🌾\n\nमैं **मौसम, 2026 MSP भाव, सरकारी योजनाएं** और **AGMARK मानक** पर जानकारी दे सकता हूं। 🎤 **बोलें** या ⌨️ **टाइप करें**!`
+        : lang === 'mr'
+        ? `नमस्कार! मी **शेतकरी AI मित्र** आहे. 🌾\n\nमी **हवामान, 2026 हमीभाव, सरकारी योजना** आणि **AGMARK मानक** याबद्दल माहिती देतो. 🎤 **बोला** किंवा ⌨️ **टाइप करा**!`
+        : `Namaste! I am your **Kisan AI Assistant** 🌾\n\nI provide instant intelligence on weather, 2026 MSP rates, government schemes & AGMARK quality standards.\n\n🎤 Use the **voice button** to speak your question, or type below!`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
+
+  // Voice input state
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef(null);
+
+  // TTS state
+  const [speakingMsgId, setSpeakingMsgId] = useState(null);
+  const [ttsSupported, setTtsSupported] = useState(false);
+
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    // Check browser support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setVoiceSupported(!!SpeechRecognition);
+    setTtsSupported('speechSynthesis' in window);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -67,9 +111,110 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
     scrollToBottom();
   }, [messages, loading]);
 
+  // Stop any ongoing speech when component unmounts
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
+    };
+  }, []);
+
+  // Voice Input — Start/Stop
+  const handleVoiceInput = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = LANG_CODES[lang] || 'en-IN';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setIsListening(false);
+
+      // Auto-detect language from spoken text and update lang if confident
+      const detectedLang = detectLanguage(transcript);
+      if (detectedLang && detectedLang !== lang && setLang) {
+        setLang(detectedLang);
+      }
+
+      setInput(transcript);
+      // Auto-send after a short delay
+      setTimeout(() => {
+        handleSendMessage(transcript);
+      }, 300);
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+
+    recognition.start();
+  }, [isListening, lang, setLang]);
+
+  // Text-to-Speech for a bot message
+  const handleSpeak = useCallback((text, msgId) => {
+    if (!window.speechSynthesis) return;
+
+    // If already speaking this message, stop
+    if (speakingMsgId === msgId) {
+      window.speechSynthesis.cancel();
+      setSpeakingMsgId(null);
+      return;
+    }
+
+    // Stop any ongoing speech
+    window.speechSynthesis.cancel();
+
+    // Strip markdown symbols for cleaner TTS
+    const cleanText = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/#+\s/g, '')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+      .replace(/[•\-]\s/g, '. ')
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = LANG_CODES[lang] || 'en-IN';
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+
+    // Pick best available voice for the language
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(
+      (v) => v.lang.startsWith(LANG_CODES[lang]?.split('-')[0] || 'en')
+    );
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onstart = () => setSpeakingMsgId(msgId);
+    utterance.onend = () => setSpeakingMsgId(null);
+    utterance.onerror = () => setSpeakingMsgId(null);
+
+    window.speechSynthesis.speak(utterance);
+  }, [lang, speakingMsgId]);
+
   const handleSendMessage = async (textToSend) => {
     const query = textToSend || input;
     if (!query || !query.trim()) return;
+
+    // Auto-detect language from typed text
+    const detectedLang = detectLanguage(query);
+    const activeLang = detectedLang || lang;
+    if (detectedLang && detectedLang !== lang && setLang) {
+      setLang(detectedLang);
+    }
 
     const userMessage = {
       id: `user_${Date.now()}`,
@@ -87,7 +232,7 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
         message: query.trim(),
         history: messages.slice(-4),
         taluka: selectedTaluka,
-        language: lang,
+        language: activeLang,
       });
 
       const botMessage = {
@@ -95,8 +240,15 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
         sender: 'bot',
         text: res?.reply || 'Information received. Please check back shortly.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        lang: activeLang,
       };
       setMessages((prev) => [...prev, botMessage]);
+
+      // Auto-speak if voice was used for input
+      if (isListening === false && textToSend && ttsSupported) {
+        // Auto-speak bot reply when voice input was used
+        setTimeout(() => handleSpeak(botMessage.text, botMessage.id), 400);
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -113,13 +265,19 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
   };
 
   const handleClearChat = () => {
+    window.speechSynthesis?.cancel();
+    setSpeakingMsgId(null);
     setMessages([
       {
         id: `welcome_${Date.now()}`,
         sender: 'bot',
         text: lang === 'gu'
-          ? 'ચેટ સાફ કરવામાં આવી છે. તમે નવો પ્રશ્ન પૂછી શકો છો.'
-          : 'Chat cleared. Ask me about weather, MSP, or agricultural current affairs!',
+          ? 'ચેટ સાફ કરવામાં આવી છે. નવો પ્રશ્ન પૂછો! 🎤 Voice અથવા ⌨️ Type'
+          : lang === 'hi'
+          ? 'चैट साफ हो गई। नया सवाल पूछें! 🎤 बोलें या ⌨️ टाइप करें'
+          : lang === 'mr'
+          ? 'चॅट साफ झाली. नवा प्रश्न विचारा! 🎤 बोला किंवा ⌨️ टाइप करा'
+          : 'Chat cleared. Ask me about weather, MSP, or agricultural current affairs! 🎤 Voice or ⌨️ Type',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ]);
@@ -153,19 +311,11 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            onClick={handleClearChat}
-            className="chat-header-btn"
-            title="Clear Chat"
-          >
+          <button onClick={handleClearChat} className="chat-header-btn" title="Clear Chat">
             <RefreshCw size={14} />
           </button>
           {isFloating && onClose && (
-            <button
-              onClick={onClose}
-              className="chat-header-btn"
-              title="Close Chat"
-            >
+            <button onClick={onClose} className="chat-header-btn" title="Close Chat">
               <X size={16} />
             </button>
           )}
@@ -174,40 +324,22 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
 
       {/* Category Pills Filter */}
       <div className="chat-filter-bar">
-        <button
-          onClick={() => setActiveFilter('all')}
-          className={`chat-filter-pill ${activeFilter === 'all' ? 'active' : ''}`}
-        >
+        <button onClick={() => setActiveFilter('all')} className={`chat-filter-pill ${activeFilter === 'all' ? 'active' : ''}`}>
           <Sparkles size={12} /> All
         </button>
-        <button
-          onClick={() => setActiveFilter('pest')}
-          className={`chat-filter-pill ${activeFilter === 'pest' ? 'active' : ''}`}
-        >
+        <button onClick={() => setActiveFilter('pest')} className={`chat-filter-pill ${activeFilter === 'pest' ? 'active' : ''}`}>
           🐛 Pest Control
         </button>
-        <button
-          onClick={() => setActiveFilter('weather')}
-          className={`chat-filter-pill ${activeFilter === 'weather' ? 'active' : ''}`}
-        >
+        <button onClick={() => setActiveFilter('weather')} className={`chat-filter-pill ${activeFilter === 'weather' ? 'active' : ''}`}>
           <CloudSun size={12} /> Weather & Rain
         </button>
-        <button
-          onClick={() => setActiveFilter('current_affairs')}
-          className={`chat-filter-pill ${activeFilter === 'current_affairs' ? 'active' : ''}`}
-        >
+        <button onClick={() => setActiveFilter('current_affairs')} className={`chat-filter-pill ${activeFilter === 'current_affairs' ? 'active' : ''}`}>
           <Newspaper size={12} /> Current Affairs & MSP
         </button>
-        <button
-          onClick={() => setActiveFilter('schemes')}
-          className={`chat-filter-pill ${activeFilter === 'schemes' ? 'active' : ''}`}
-        >
+        <button onClick={() => setActiveFilter('schemes')} className={`chat-filter-pill ${activeFilter === 'schemes' ? 'active' : ''}`}>
           🏛️ Schemes
         </button>
-        <button
-          onClick={() => setActiveFilter('quality')}
-          className={`chat-filter-pill ${activeFilter === 'quality' ? 'active' : ''}`}
-        >
+        <button onClick={() => setActiveFilter('quality')} className={`chat-filter-pill ${activeFilter === 'quality' ? 'active' : ''}`}>
           <ShieldCheck size={12} /> AGMARK Tests
         </button>
       </div>
@@ -241,7 +373,35 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
                   return <p key={idx} style={{ margin: '3px 0', fontSize: '0.85rem', lineHeight: '1.45' }}>{formatInlineMarkdown(line)}</p>;
                 })}
               </div>
-              <span className="chat-timestamp">{m.timestamp}</span>
+
+              {/* TTS Button for bot messages */}
+              {m.sender === 'bot' && ttsSupported && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                  <span className="chat-timestamp">{m.timestamp}</span>
+                  <button
+                    onClick={() => handleSpeak(m.text, m.id)}
+                    title={speakingMsgId === m.id ? 'Stop Speaking' : 'Listen (Read Aloud)'}
+                    style={{
+                      background: speakingMsgId === m.id ? '#dcfce7' : 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      color: speakingMsgId === m.id ? '#16a34a' : '#9ca3af',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      fontSize: '0.7rem',
+                    }}
+                  >
+                    {speakingMsgId === m.id ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    {speakingMsgId === m.id ? 'Stop' : 'Listen'}
+                  </button>
+                </div>
+              )}
+              {m.sender === 'user' && (
+                <span className="chat-timestamp" style={{ display: 'block', textAlign: 'right', marginTop: '2px' }}>{m.timestamp}</span>
+              )}
             </div>
             {m.sender === 'user' && (
               <div className="bubble-avatar user">
@@ -286,7 +446,7 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
         </div>
       </div>
 
-      {/* Input Bar */}
+      {/* Input Bar with Voice Button */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -294,23 +454,60 @@ export default function AIChatbot({ t, lang = 'en', selectedTaluka = 'Gondal', i
         }}
         className="chat-input-bar"
       >
+        {/* Voice Input Button */}
+        {voiceSupported && (
+          <button
+            type="button"
+            onClick={handleVoiceInput}
+            title={isListening ? 'Stop listening' : `Speak your question (${LANG_CODES[lang] || 'en-IN'})`}
+            style={{
+              width: '38px', height: '38px', borderRadius: '50%', border: 'none',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, transition: 'all 0.2s',
+              background: isListening ? '#dc2626' : '#f0fdf4',
+              color: isListening ? 'white' : '#16a34a',
+              boxShadow: isListening ? '0 0 0 4px rgba(220,38,38,0.25)' : '0 1px 3px rgba(0,0,0,0.1)',
+              animation: isListening ? 'pulse-mic 1s infinite' : 'none',
+            }}
+          >
+            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+          </button>
+        )}
+
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={t?.askAiPlaceholder || "Ask about today's weather, rain, MSP rates, or PM-KISAN..."}
-          disabled={loading}
+          placeholder={
+            isListening
+              ? '🎤 Listening... speak now'
+              : (t?.askAiPlaceholder || "Ask about today's weather, rain, MSP rates, or PM-KISAN...")
+          }
+          disabled={loading || isListening}
           className="chat-text-input"
         />
         <button
           type="submit"
-          disabled={loading || !input.trim()}
+          disabled={loading || !input.trim() || isListening}
           className="chat-send-btn"
           title="Send Question"
         >
           <Send size={16} />
         </button>
       </form>
+
+      {/* Voice status indicator */}
+      {isListening && (
+        <div style={{
+          textAlign: 'center', padding: '4px 8px',
+          background: '#fee2e2', borderTop: '1px solid #fecaca',
+          fontSize: '0.75rem', color: '#dc2626', fontWeight: '600',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+        }}>
+          <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626', animation: 'pulse-mic 1s infinite' }}></span>
+          Listening in {LANG_CODES[lang] || 'en-IN'}... Speak your question clearly
+        </div>
+      )}
     </div>
   );
 }

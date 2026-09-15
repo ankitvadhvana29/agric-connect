@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Eye, MapPin, ShieldCheck, PlusCircle } from 'lucide-react';
-import api from '../services/api';
+import { ShoppingCart, Eye, MapPin, ShieldCheck, PlusCircle, Package, LogIn } from 'lucide-react';
+
 
 export default function Marketplace({
   t,
@@ -8,14 +8,23 @@ export default function Marketplace({
   onOpenTransparency,
   onOpenPaymentWithProduct,
   onOpenFarmerSell,
+  onOpenLogin,
   selectedTaluka = '',
   customProducts = []
 }) {
   const [products, setProducts] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [loading, setLoading] = useState(true);
+  // Per-product quantity selection: { [productId]: number }
+  const [quantities, setQuantities] = useState({});
 
   const categories = ['All', 'Oilseeds', 'Spices', 'Grains & Cereals', 'Pulses & Legumes', 'Cotton & Cash Crops'];
+
+  const getQty = (id) => quantities[id] || 1;
+  const setQty = (id, val) => {
+    const v = Math.max(1, parseInt(val) || 1);
+    setQuantities((prev) => ({ ...prev, [id]: v }));
+  };
 
   // Helper to reliably match product categories across all formats
   const matchesCategory = (itemCat, selectedCat) => {
@@ -35,21 +44,23 @@ export default function Marketplace({
   };
 
   useEffect(() => {
-    async function loadProducts() {
-      setLoading(true);
-      const cat = activeCategory === 'All' ? '' : activeCategory;
-      const data = await api.getProducts(selectedTaluka, cat);
-      // Merge newly listed farmer products with catalog, exclude fruits & vegetables
-      const merged = [...customProducts, ...data].filter(
-        (p) => p.category !== 'Fruits' && p.category !== 'Vegetables'
-      );
-      // Apply strict client-side category matching so every category displays distinct produce
-      const categoryFiltered = merged.filter((p) => matchesCategory(p.category, activeCategory));
-      setProducts(categoryFiltered);
-      setLoading(false);
-    }
-    loadProducts();
-  }, [selectedTaluka, activeCategory, customProducts]);
+    setLoading(true);
+    // Only show farmer-listed products — no pre-loaded API catalog
+    const filtered = customProducts.filter((p) => matchesCategory(p.category, activeCategory));
+
+    // Deduplicate by _id or id
+    const seen = new Set();
+    const deduped = filtered.filter((p) => {
+      const key = p._id || p.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    setProducts(deduped);
+    setLoading(false);
+  }, [activeCategory, customProducts]);
+
 
   return (
     <div>
@@ -78,20 +89,30 @@ export default function Marketplace({
           ))}
         </div>
 
-        {/* Farmer Sell Option Button (Hidden for Consumers) */}
-        {currentUser?.role !== 'consumer' && (
+        {/* Sell / Login button */}
+        {!currentUser ? (
+          <button
+            onClick={onOpenLogin}
+            className="login-btn"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              backgroundColor: '#2563eb',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold',
+            }}
+          >
+            <LogIn size={16} />
+            <span>Login to Sell / Buy</span>
+          </button>
+        ) : currentUser?.role !== 'consumer' && (
           <button
             onClick={onOpenFarmerSell}
             className="login-btn"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
+              display: 'flex', alignItems: 'center', gap: '6px',
               backgroundColor: '#15803d',
               boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              fontWeight: 'bold',
+              padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold',
             }}
           >
             <PlusCircle size={18} />
@@ -107,37 +128,56 @@ export default function Marketplace({
         </div>
       ) : products.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', background: 'white', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-          <p style={{ color: '#4b5563' }}>No produce listings currently available for this category.</p>
-          {currentUser?.role !== 'consumer' ? (
-            <button
-              onClick={onOpenFarmerSell}
-              className="scan-btn"
-              style={{ marginTop: '1rem' }}
-            >
-              Be the first farmer to list produce
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🌾</div>
+          <p style={{ color: '#4b5563', fontWeight: '600', fontSize: '1rem' }}>
+            {activeCategory === 'All'
+              ? 'No produce listed yet in the marketplace.'
+              : `No ${activeCategory} listed yet.`}
+          </p>
+          <p style={{ color: '#6b7280', fontSize: '0.85rem', marginTop: '6px' }}>
+            Farmers can list their produce using the "Sell Produce" button.
+          </p>
+          {!currentUser ? (
+            <button onClick={onOpenLogin} className="scan-btn" style={{ marginTop: '1rem' }}>
+              Login to list or buy produce
+            </button>
+          ) : currentUser?.role !== 'consumer' ? (
+            <button onClick={onOpenFarmerSell} className="scan-btn" style={{ marginTop: '1rem' }}>
+              🌾 List Your Produce Now
             </button>
           ) : (
             <p style={{ fontSize: '0.85rem', color: '#166534', marginTop: '1rem', fontWeight: '500' }}>
-              ✓ New harvest consignments arrive daily from Saurashtra APMC mandis. Please check other categories!
+              ✓ Check back soon — farmers are adding fresh produce daily!
             </p>
           )}
         </div>
+
       ) : (
         <div className="marketplace-grid">
           {products.map((item) => {
+            const productId = item._id || item.id;
             const farmerName = item.farmer?.fullName || item.farmer || 'Verified Farmer';
-            const imageUrl = item.images?.[0]?.url || 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=400';
+            // Use uploaded image URL (blob or remote), fallback to Unsplash only if none
+            const imageUrl =
+              item.images?.[0]?.url ||
+              item.image ||
+              'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=400';
             const isFarmerVerified = item.isVerified || item.farmer?.kycStatus === 'verified';
+            const qty = getQty(productId);
+            const totalPrice = (item.price * qty).toFixed(2);
 
             return (
-              <div key={item._id || item.id} className="product-card">
-                {/* Produce photo seen by customer */}
+              <div key={productId} className="product-card">
+                {/* Produce photo */}
                 <div style={{ position: 'relative', overflow: 'hidden' }}>
                   <img
                     src={imageUrl}
                     alt={item.name}
                     className="product-image"
                     loading="lazy"
+                    onError={(e) => {
+                      e.target.src = 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=400';
+                    }}
                   />
 
                   {/* Aadhaar Verified Farmer Badge */}
@@ -175,6 +215,12 @@ export default function Marketplace({
                         {item.name}
                       </h4>
                       <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>{farmerName}</p>
+                      {/* Product description if available */}
+                      {item.description && (
+                        <p style={{ fontSize: '0.75rem', color: '#4b5563', marginTop: '2px', lineHeight: '1.3' }}>
+                          {item.description}
+                        </p>
+                      )}
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <p className="product-price">
@@ -183,6 +229,12 @@ export default function Marketplace({
                           /{item.unit || 'kg'}
                         </span>
                       </p>
+                      {item.availableQuantity && (
+                        <p style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '500' }}>
+                          <Package size={10} style={{ display: 'inline', marginRight: '2px' }} />
+                          {item.availableQuantity} {item.unit || 'kg'} avail.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -191,19 +243,68 @@ export default function Marketplace({
                     {item.locationTaluka || item.location || 'Gondal, Rajkot'}
                   </div>
 
+                  {/* Quantity Selector */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    margin: '8px 0', padding: '6px 8px',
+                    background: '#f9fafb', borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                  }}>
+                    <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                      Qty ({item.unit || 'kg'}):
+                    </span>
+                    <button
+                      onClick={() => setQty(productId, qty - 1)}
+                      style={{
+                        width: '24px', height: '24px', border: '1px solid #d1d5db',
+                        borderRadius: '4px', background: 'white', cursor: 'pointer',
+                        fontSize: '1rem', lineHeight: '1', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >−</button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={qty}
+                      onChange={(e) => setQty(productId, e.target.value)}
+                      style={{
+                        width: '50px', textAlign: 'center', border: '1px solid #d1d5db',
+                        borderRadius: '4px', padding: '2px 4px', fontSize: '0.875rem',
+                      }}
+                    />
+                    <button
+                      onClick={() => setQty(productId, qty + 1)}
+                      style={{
+                        width: '24px', height: '24px', border: '1px solid #d1d5db',
+                        borderRadius: '4px', background: 'white', cursor: 'pointer',
+                        fontSize: '1rem', lineHeight: '1', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >+</button>
+                    <span style={{ fontSize: '0.78rem', color: '#15803d', fontWeight: '700', marginLeft: 'auto' }}>
+                      = ₹{totalPrice}
+                    </span>
+                  </div>
+
                   {/* Action Buttons */}
                   <div className="product-actions">
                     <button
-                      onClick={() => onOpenPaymentWithProduct(item)}
+                      onClick={() => {
+                        if (!currentUser) {
+                          onOpenLogin?.();
+                          return;
+                        }
+                        onOpenPaymentWithProduct(item, qty);
+                      }}
                       className="add-cart-btn"
                     >
                       <ShoppingCart size={16} style={{ marginRight: '6px' }} />
-                      {t.addToCart}
+                      {currentUser ? t.addToCart : 'Login to Buy'}
                     </button>
 
                     {/* Consumer Transparency Audit View */}
                     <button
-                      onClick={() => onOpenTransparency(item._id || item.id, item.name)}
+                      onClick={() => onOpenTransparency(productId, item.name)}
                       className="icon-btn"
                       title={t.viewTransparency}
                       style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: 'var(--primary-green)' }}

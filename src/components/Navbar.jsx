@@ -62,14 +62,14 @@ export default function Navbar({
                 fontWeight: '600',
                 padding: '0.45rem 0.75rem',
               }}
-              title="List Produce for Sale (Farmers)"
+              title={currentUser ? 'List Produce for Sale (Farmers)' : 'Login to Sell Produce'}
             >
               <PlusCircle size={16} />
               <span>🌾 {t.sellProduce || 'Sell Produce'}</span>
             </button>
           )}
 
-          {/* Language Switcher (Feature 8) */}
+          {/* Language Switcher */}
           <div style={{ display: 'flex', alignItems: 'center', marginLeft: '0.25rem' }}>
             <Globe size={16} style={{ color: '#4b5563', marginRight: '4px' }} />
             <select
@@ -85,18 +85,14 @@ export default function Navbar({
             </select>
           </div>
 
-          {/* User Auth Portal Status (Feature 12) */}
+          {/* User Auth Portal Status */}
           {currentUser ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '0.5rem' }}>
               <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  fontSize: '0.8rem',
+                  display: 'flex', alignItems: 'center',
+                  background: '#f0fdf4', border: '1px solid #bbf7d0',
+                  padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem',
                 }}
               >
                 {currentUser.kycStatus === 'verified' ? (
@@ -121,6 +117,7 @@ export default function Navbar({
               </button>
             </div>
           ) : (
+            /* Login button navigates to Login Page */
             <button onClick={onOpenLogin} className="login-btn">
               <LogIn size={16} style={{ marginRight: '6px' }} />
               {t.login}
