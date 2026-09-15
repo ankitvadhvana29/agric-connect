@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Leaf, CreditCard, ShoppingCart, Globe, PlusCircle, CheckCircle2, ShieldCheck, ArrowRight, Bot
 } from 'lucide-react';
-import './App.css';
+import './app.css';
 
 // Translations
 import translations from './utils/translations';
