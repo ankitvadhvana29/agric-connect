@@ -425,6 +425,15 @@ Hello! I can provide in-depth, verified guidance on:
   },
 
   // 7 & 10. Products Catalog & Customer Viewable Images
+
+
+  addProduct: async (productData) => {
+    const res = await fetchAPI('/products', {
+      method: 'POST',
+      body: JSON.stringify(productData),
+    });
+    return res;
+  },
   getProducts: async (taluka = '', category = '') => {
     let url = `/products?`;
     if (taluka) url += `taluka=${encodeURIComponent(taluka)}&`;
