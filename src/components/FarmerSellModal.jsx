@@ -152,15 +152,25 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
 
 
     // Attempt backend save
-    try {
-      await api.getProducts(); // Ping
-    } catch {}
+  try {
+      const res = await api.addProduct(newProduct);
 
-    setLoading(false);
-    setSuccess(true);
+      if (res?.success === false) {
+        setLoading(false);
+        setError(res.message || 'Product save failed. Please try again.');
+        return;
+      }
 
-    if (onProductCreated) {
-      onProductCreated(newProduct);
+      setLoading(false);
+      setSuccess(true);
+
+      if (onProductCreated) {
+        onProductCreated(res?.product || newProduct);
+      }
+    } catch (err) {
+      setLoading(false);
+      setError('Backend connection failed. Please try again.');
+      return;
     }
 
     setTimeout(() => {
