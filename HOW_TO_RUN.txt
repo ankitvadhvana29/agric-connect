@@ -1,0 +1,46 @@
+======================================================================
+                  AgriConnect - Setup & Run Guide
+======================================================================
+
+HOW TO RUN ON A NEW COMPUTER:
+
+Option 1: Quick Auto-Start (Recommended)
+----------------------------------------
+1. Double-click "START_AGRICONNECT.bat".
+2. It will automatically check for dependencies, run "npm install" if needed,
+   and launch both the Backend (Port 5000) and Frontend (Port 5173).
+3. Open your browser at: http://localhost:5173
+
+
+Option 2: Manual Terminal Start
+-------------------------------
+Prerequisite: Install Node.js (v18+) from https://nodejs.org
+
+Step 1: Install Dependencies
+  Open a terminal in the project folder and run:
+    npm install
+    cd server
+    npm install
+    cd ..
+
+Step 2: Start the Backend Server
+  Open a terminal in "server" folder and run:
+    npm start
+  (Runs on http://localhost:5000)
+
+Step 3: Start the Frontend
+  Open another terminal in the root project folder and run:
+    npm run dev
+  (Runs on http://localhost:5173)
+
+Step 4: Open Browser
+  Visit http://localhost:5173
+
+======================================================================
+Features Included:
+- Direct Saurashtra Mandi Marketplace with distinct category produce
+- Kisan AI Chatbot (Agricultural weather, rain alerts, 2026 MSP rates, pest control, schemes)
+- Escrow UPI Payment Gateway with QR code & OTP verification
+- Role-based experience: Farmers can list produce; Consumers buy with zero selling distractions
+- Fluid responsive layout with zero sideways scrolling
+======================================================================
