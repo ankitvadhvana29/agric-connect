@@ -434,6 +434,10 @@ Hello! I can provide in-depth, verified guidance on:
     });
     return res;
   },
+  deleteProduct: async (productId) => {
+    const res = await fetchAPI(`/products/${productId}`, { method: 'DELETE' });
+    return res;
+  },
   getProducts: async (taluka = '', category = '') => {
     let url = `/products?`;
     if (taluka) url += `taluka=${encodeURIComponent(taluka)}&`;

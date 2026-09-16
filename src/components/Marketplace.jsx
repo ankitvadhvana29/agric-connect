@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Eye, MapPin, ShieldCheck, PlusCircle, Package, LogIn } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ShoppingCart, Eye, MapPin, ShieldCheck, PlusCircle, Package, LogIn, Trash2, RefreshCw } from 'lucide-react';
+import api from '../services/api';
 
 
 export default function Marketplace({
@@ -10,11 +11,13 @@ export default function Marketplace({
   onOpenFarmerSell,
   onOpenLogin,
   selectedTaluka = '',
-  customProducts = []
+  customProducts = [],
+  onDeleteProduct,
 }) {
   const [products, setProducts] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
   const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(null);
   // Per-product quantity selection: { [productId]: number }
   const [quantities, setQuantities] = useState({});
 
@@ -43,31 +46,58 @@ export default function Marketplace({
     return cat === sel;
   };
 
+  const loadProducts = useCallback(async () => {
+    try {
+      // Fetch from live backend (shows products from ALL devices)
+      const backendProducts = await api.getProducts('', '');
+
+      // Merge: backend products + locally added products (dedup by _id)
+      const allProducts = [...backendProducts];
+
+      // Add local customProducts that aren't already in backend results
+      const backendIds = new Set(allProducts.map((p) => p._id || p.id));
+      for (const cp of customProducts) {
+        const key = cp._id || cp.id;
+        if (!backendIds.has(key)) {
+          allProducts.push(cp);
+        }
+      }
+
+      // Filter by active category
+      const filtered = allProducts.filter((p) => matchesCategory(p.category, activeCategory));
+
+      setProducts(filtered);
+      setLastRefresh(new Date());
+    } catch {
+      // Fallback to local only
+      const filtered = customProducts.filter((p) => matchesCategory(p.category, activeCategory));
+      setProducts(filtered);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeCategory, customProducts]);
+
   useEffect(() => {
     setLoading(true);
-    // Only show farmer-listed products — no pre-loaded API catalog
-    const filtered = customProducts.filter((p) => matchesCategory(p.category, activeCategory));
+    loadProducts();
 
-    // Deduplicate by _id or id
-    const seen = new Set();
-    const deduped = filtered.filter((p) => {
-      const key = p._id || p.id;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    // Auto-refresh every 5 seconds to pick up products added by farmers on other devices
+    const interval = setInterval(() => {
+      loadProducts();
+    }, 5000);
 
-    setProducts(deduped);
-    setLoading(false);
-  }, [activeCategory, customProducts]);
+    return () => clearInterval(interval);
+  }, [loadProducts]);
 
 
   return (
     <div>
       {/* Header Bar with Sell Option & Categories */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '10px' }}>
-        {/* Category Filter Pills */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: '1.25rem' }}>
+        {/* Live sync indicator */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+
           {categories.map((cat) => (
             <button
               key={cat}
@@ -119,7 +149,17 @@ export default function Marketplace({
             <span>🌾 Sell Produce (ખેડૂત વેચાણ)</span>
           </button>
         )}
+        </div>
+
+        {/* Live sync status bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#6b7280', marginTop: '4px' }}>
+          <RefreshCw size={12} style={{ color: '#16a34a' }} />
+          <span style={{ color: '#16a34a', fontWeight: 600 }}>🟢 Live</span>
+          <span>— Products sync every 5s from server (visible on all devices)</span>
+          {lastRefresh && <span>· {lastRefresh.toLocaleTimeString()}</span>}
+        </div>
       </div>
+
 
       {/* Produce Grid */}
       {loading ? (
@@ -311,6 +351,26 @@ export default function Marketplace({
                     >
                       <Eye size={18} />
                     </button>
+
+                    {/* Delete button — only shown to the farmer who listed this product */}
+                    {currentUser && currentUser.role !== 'consumer' &&
+                      (item.farmer?.phone === currentUser.phone ||
+                       item.farmer?.name === currentUser.name ||
+                       item.farmerPhone === currentUser.phone ||
+                       !item.farmer) && onDeleteProduct && (
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(`Delete "${item.name}" from marketplace?`)) {
+                            await onDeleteProduct(item._id || item.id);
+                          }
+                        }}
+                        className="icon-btn"
+                        title="Delete this listing"
+                        style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#dc2626' }}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

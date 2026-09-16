@@ -107,6 +107,19 @@ export default function App() {
     });
   };
 
+  const handleDeleteProduct = async (productId) => {
+    try {
+      await api.deleteProduct(productId);
+    } catch {}
+    setCustomProducts((prev) => {
+      const updated = prev.filter((p) => (p._id || p.id) !== productId);
+      try {
+        localStorage.setItem('agriconnect_custom_products', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
   // Login success handler — navigate back to dashboard
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
@@ -386,6 +399,7 @@ export default function App() {
               selectedTaluka={currentUser?.taluka || 'Gondal'}
               customProducts={customProducts}
               onOpenLogin={handleOpenLogin}
+              onDeleteProduct={handleDeleteProduct}
             />
           </div>
         )}

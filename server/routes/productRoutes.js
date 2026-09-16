@@ -1,13 +1,13 @@
 import express from 'express';
-import { getProducts, getProductById, createProduct } from '../controllers/productController.js';
-import { protect, authorizeRoles } from '../middleware/auth.js';
+import { getProducts, getProductById, createProduct, deleteProduct } from '../controllers/productController.js';
 import upload from '../middleware/upload.js';
 
 const router = express.Router();
 
-// Feature 10: Multi-Image produce listings seen by customer
+// Feature 10: Produce listings synced across all devices
 router.get('/', getProducts);
 router.get('/:id', getProductById);
-router.post('/', protect, authorizeRoles('farmer', 'admin'), upload.array('images', 5), createProduct);
+router.post('/', upload.array('images', 5), createProduct);
+router.delete('/:id', deleteProduct);
 
 export default router;

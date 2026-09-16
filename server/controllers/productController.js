@@ -113,14 +113,22 @@ export const getProductById = async (req, res, next) => {
  */
 export const createProduct = async (req, res, next) => {
   try {
-    const { name, category, variety, price, unit, availableQuantity, locationTaluka, hubId } = req.body;
+    const { name, category, variety, price, unit, availableQuantity, locationTaluka, hubId, images: bodyImages, farmer: bodyFarmer, aiGrading } = req.body;
     const files = req.files || [];
 
-    const images = files.map((file, idx) => ({
+    let images = files.map((file, idx) => ({
       url: `/uploads/${file.filename}`,
       caption: idx === 0 ? 'Primary Produce Photo' : 'Farm / Quality Photo',
       isPrimary: idx === 0,
     }));
+
+    if (images.length === 0 && bodyImages) {
+      if (Array.isArray(bodyImages)) {
+        images = bodyImages;
+      } else if (typeof bodyImages === 'string') {
+        try { images = JSON.parse(bodyImages); } catch { images = [{ url: bodyImages, isPrimary: true }]; }
+      }
+    }
 
     if (images.length === 0) {
       images.push({
@@ -130,19 +138,35 @@ export const createProduct = async (req, res, next) => {
       });
     }
 
+    const farmerData = bodyFarmer || (req.user ? {
+      _id: req.user._id,
+      fullName: req.user.fullName,
+      phone: req.user.phone,
+      taluka: req.user.taluka || locationTaluka,
+      kycStatus: req.user.kycStatus || 'verified',
+      trustScore: req.user.trustScore || 95,
+    } : {
+      fullName: 'Verified Farmer',
+      taluka: locationTaluka || 'Gondal, Rajkot',
+      kycStatus: 'verified',
+      trustScore: 95,
+    });
+
     const newProd = {
-      _id: `prod_${Date.now()}`,
-      farmer: req.user?._id || 'usr_farmer_01',
+      _id: req.body._id || `prod_${Date.now()}`,
+      farmer: farmerData,
       name,
       category: category || 'Oilseeds',
       variety: variety || 'Farm Standard',
       price: parseFloat(price) || 25,
       unit: unit || 'kg',
       availableQuantity: parseFloat(availableQuantity) || 100,
-      locationTaluka: locationTaluka || 'Nashik Taluka',
+      locationTaluka: locationTaluka || 'Gondal, Rajkot',
       images,
+      aiGrading: aiGrading || { qualityGrade: 'Grade A', confidenceScore: '96%' },
       isVerified: true,
       status: 'Available',
+      createdAt: new Date().toISOString(),
     };
 
     if (isDatabaseConnected()) {
@@ -155,6 +179,34 @@ export const createProduct = async (req, res, next) => {
       success: true,
       message: 'Produce listing published to Taluka marketplace!',
       product: newProd,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete produce product (Farmer)
+ * @route   DELETE /api/products/:id
+ * @access  Public / Farmer
+ */
+export const deleteProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (isDatabaseConnected()) {
+      await Product.findByIdAndDelete(id);
+    }
+
+    const index = mockProducts.findIndex((p) => p._id === id || p.id === id);
+    if (index !== -1) {
+      mockProducts.splice(index, 1);
+    }
+
+    res.json({
+      success: true,
+      message: 'Produce listing deleted successfully',
+      id,
     });
   } catch (error) {
     next(error);
