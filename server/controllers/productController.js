@@ -131,6 +131,7 @@ export const createProduct = async (req, res, next) => {
     }
 
     const newProd = {
+      _id: `prod_${Date.now()}`,
       farmer: req.user?._id || 'usr_farmer_01',
       name,
       category: category || 'Oilseeds',
@@ -145,14 +146,8 @@ export const createProduct = async (req, res, next) => {
     };
 
     if (isDatabaseConnected()) {
-      const saved = await Product.create(newProd);
-      return res.status(201).json({
-        success: true,
-        message: 'Produce listing published to Taluka marketplace!',
-        product: saved,
-      });
+      await Product.create(newProd);
     } else {
-      newProd._id = `prod_${Date.now()}`;
       mockProducts.unshift(newProd);
     }
 
