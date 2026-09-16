@@ -11,7 +11,7 @@ async function fetchAPI(endpoint, options = {}) {
   };
 
   try {
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const res = await fetch(`${API_BASE_URL}/api${endpoint}`, {
       ...options,
       headers,
     });
