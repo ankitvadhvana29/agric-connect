@@ -5,6 +5,7 @@ import { generateUPIPaymentData } from '../services/upiService.js';
 import { DEFAULT_FOUNDER_COMMISSION_PERCENT, ESCROW_STATUS, ORDER_STATUS } from '../config/constants.js';
 import { isDatabaseConnected } from '../config/db.js';
 import { mockOrders, mockUsers } from '../config/mockStore.js';
+import { extractMongoId, isMongoId } from '../utils/mongoIds.js';
 
 /**
  * @desc    Create new Order with 5% Founder Commission Calculation & Escrow Setup
@@ -28,11 +29,8 @@ export const createOrder = async (req, res, next) => {
     const orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
     const pooledBatchCode = `POOL-${(taluka || 'NSK').substring(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`;
 
-    const newOrder = {
-      _id: `ord_${Date.now()}`,
+    const orderFields = {
       orderNumber,
-      buyer: buyerId,
-      farmer: farmerId || 'usr_farmer_01',
       items,
       subtotal,
       deliveryFee: 0,
@@ -47,13 +45,40 @@ export const createOrder = async (req, res, next) => {
       deliveryAddress,
     };
 
+    let newOrder;
+
     if (isDatabaseConnected()) {
-      await Order.create(newOrder);
+      const mongoBuyerId = extractMongoId(buyerId) || extractMongoId(req.user);
+      const mongoFarmerId = extractMongoId(farmerId);
+      const mongoHubId = extractMongoId(hubId);
+
+      if (!mongoBuyerId || !mongoFarmerId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid buyer and farmer IDs are required when MongoDB is connected.',
+        });
+      }
+
+      const mongoItems = items.map((item) => {
+        const { product, ...rest } = item;
+        const productId = extractMongoId(product);
+        return productId ? { ...rest, product: productId } : rest;
+      });
+
+      const created = await Order.create({
+        ...orderFields,
+        items: mongoItems,
+        buyer: mongoBuyerId,
+        farmer: mongoFarmerId,
+        ...(mongoHubId ? { hub: mongoHubId } : {}),
+      });
+      newOrder = created;
+
       if (commissionAmount > 0) {
         await Commission.create({
-          order: newOrder._id,
-          buyer: buyerId,
-          farmer: farmerId,
+          order: created._id,
+          buyer: mongoBuyerId,
+          farmer: mongoFarmerId,
           orderTotal: subtotal,
           commissionPercentage: commissionRate,
           commissionAmount,
@@ -61,6 +86,12 @@ export const createOrder = async (req, res, next) => {
         });
       }
     } else {
+      newOrder = {
+        _id: `ord_${Date.now()}`,
+        buyer: buyerId,
+        farmer: farmerId || 'usr_farmer_01',
+        ...orderFields,
+      };
       mockOrders.unshift(newOrder);
     }
 
@@ -133,6 +164,12 @@ export const updateOrderStatus = async (req, res, next) => {
       const order = mockOrders.find((o) => o._id === id || o.orderNumber === id);
       if (order) order.orderStatus = status;
       return res.json({ success: true, message: `Order status updated to ${status}.`, order });
+    }
+
+    if (!isMongoId(id)) {
+      const mockOrder = mockOrders.find((o) => o._id === id || o.orderNumber === id);
+      if (mockOrder) mockOrder.orderStatus = status;
+      return res.json({ success: true, message: `Order status updated to ${status}.`, order: mockOrder });
     }
 
     const order = await Order.findById(id);

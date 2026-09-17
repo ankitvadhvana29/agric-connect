@@ -118,7 +118,6 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
     const finalProduceImage = imagePreview || getCategoryImage(category, name);
 
     const newProduct = {
-      _id: `prod_${Date.now()}`,
       name,
       category,
       variety: variety || 'Saurashtra Farm Fresh',
@@ -126,13 +125,9 @@ export default function FarmerSellModal({ isOpen, onClose, onProductCreated, cur
       unit,
       availableQuantity: parseFloat(quantity),
       locationTaluka: `${taluka}, ${selectedTalukaObj?.district || 'Saurashtra'}`,
-      farmer: {
-        fullName: currentUser?.fullName || 'Mansukhbhai Patel',
-        phone: currentUser?.phone || '9825012345',
-        taluka,
-        kycStatus: 'verified',
-        trustScore: 95,
-      },
+      farmerId: currentUser?._id || currentUser?.id || undefined,
+      farmerPhone: currentUser?.phone || undefined,
+      farmerName: currentUser?.fullName || undefined,
       images: [
         {
           url: finalProduceImage,

@@ -1,4 +1,6 @@
-const API_BASE_URL = 'https://agric-connect-backend.onrender.com';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? 'http://localhost:5000' : 'https://agric-connect-backend.onrender.com');
 /**
  * Universal Fetch helper with JWT auth support and offline fallback handling
  */

@@ -2,6 +2,66 @@ import Product from '../models/Product.js';
 import User from '../models/User.js';
 import { isDatabaseConnected } from '../config/db.js';
 import { mockProducts } from '../config/mockStore.js';
+import { extractMongoId, isMongoId } from '../utils/mongoIds.js';
+
+const CATEGORY_ENUM = ['Oilseeds', 'Spices', 'Grains', 'Pulses', 'Cotton', 'Cash Crops'];
+const UNIT_ENUM = ['kg', 'dozen', 'quintal', 'crate', 'bundle'];
+
+const normalizeCategory = (category) => {
+  const c = (category || '').toLowerCase();
+  if (c.includes('spice')) return 'Spices';
+  if (c.includes('grain') || c.includes('cereal')) return 'Grains';
+  if (c.includes('pulse') || c.includes('legume')) return 'Pulses';
+  if (c.includes('cotton')) return 'Cotton';
+  if (c.includes('cash')) return 'Cash Crops';
+  if (c.includes('oil')) return 'Oilseeds';
+  return CATEGORY_ENUM.includes(category) ? category : 'Oilseeds';
+};
+
+const normalizeUnit = (unit) => {
+  const u = (unit || '').toLowerCase();
+  if (u.includes('quintal')) return 'quintal';
+  if (u.includes('dozen')) return 'dozen';
+  if (u.includes('crate') || u.includes('box')) return 'crate';
+  if (u.includes('bundle') || u.includes('mann')) return 'bundle';
+  return UNIT_ENUM.includes(unit) ? unit : 'kg';
+};
+
+const resolveFarmerId = async (req, bodyFarmer) => {
+  const fromAuth = extractMongoId(req.user);
+  if (fromAuth) return fromAuth;
+
+  const fromBody = extractMongoId(bodyFarmer);
+  if (fromBody) return fromBody;
+
+  const phone = bodyFarmer?.phone;
+  if (phone) {
+    const byPhone = await User.findOne({ phone });
+    if (byPhone) return byPhone._id;
+  }
+
+  const fullName = bodyFarmer?.fullName;
+  if (fullName) {
+    const byName = await User.findOne({ fullName, role: 'farmer' });
+    if (byName) return byName._id;
+  }
+
+  const existingFarmer = await User.findOne({ role: 'farmer' }).sort({ createdAt: 1 });
+  if (existingFarmer) return existingFarmer._id;
+
+  const created = await User.create({
+    fullName: fullName || 'Verified Farmer',
+    phone: phone || `98${Date.now().toString().slice(-8)}`,
+    password: 'password123',
+    role: 'farmer',
+    taluka: bodyFarmer?.taluka || 'Gondal',
+    district: 'Rajkot',
+    state: 'Gujarat',
+    kycStatus: 'verified',
+    trustScore: bodyFarmer?.trustScore || 95,
+  });
+  return created._id;
+};
 
 /**
  * @desc    Get all produce products (Marketplace with Taluka Filter & Images)
@@ -90,6 +150,11 @@ export const getProductById = async (req, res, next) => {
       return res.json({ success: true, product });
     }
 
+    if (!isMongoId(id)) {
+      const fallback = mockProducts.find((p) => p._id === id) || mockProducts[0];
+      return res.json({ success: true, product: fallback });
+    }
+
     const product = await Product.findById(id)
       .populate('farmer', 'fullName phone taluka district kycStatus trustScore aadhaarMasked')
       .populate('hub', 'name taluka district status')
@@ -113,7 +178,7 @@ export const getProductById = async (req, res, next) => {
  */
 export const createProduct = async (req, res, next) => {
   try {
-    const { name, category, variety, price, unit, availableQuantity, locationTaluka, hubId, images: bodyImages, farmer: bodyFarmer, aiGrading } = req.body;
+    const { name, category, variety, price, unit, availableQuantity, locationTaluka, hubId, images: bodyImages, farmer: bodyFarmer, farmerId, farmerPhone, farmerName, aiGrading } = req.body;
     const files = req.files || [];
 
     let images = files.map((file, idx) => ({
@@ -146,34 +211,54 @@ export const createProduct = async (req, res, next) => {
       kycStatus: req.user.kycStatus || 'verified',
       trustScore: req.user.trustScore || 95,
     } : {
-      fullName: 'Verified Farmer',
+      _id: farmerId,
+      fullName: farmerName || 'Verified Farmer',
+      phone: farmerPhone,
       taluka: locationTaluka || 'Gondal, Rajkot',
       kycStatus: 'verified',
       trustScore: 95,
     });
 
-    const newProd = {
-      _id: req.body._id || `prod_${Date.now()}`,
-      farmer: farmerData,
+    const listingFields = {
       name,
-      category: category || 'Oilseeds',
+      category: normalizeCategory(category),
       variety: variety || 'Farm Standard',
       price: parseFloat(price) || 25,
-      unit: unit || 'kg',
+      unit: normalizeUnit(unit),
       availableQuantity: parseFloat(availableQuantity) || 100,
       locationTaluka: locationTaluka || 'Gondal, Rajkot',
       images,
       aiGrading: aiGrading || { qualityGrade: 'Grade A', confidenceScore: '96%' },
       isVerified: true,
       status: 'Available',
-      createdAt: new Date().toISOString(),
     };
 
     if (isDatabaseConnected()) {
-      await Product.create(newProd);
-    } else {
-      mockProducts.unshift(newProd);
+      const farmerId = await resolveFarmerId(req, farmerData);
+      const hubObjectId = extractMongoId(hubId);
+      const created = await Product.create({
+        ...listingFields,
+        farmer: farmerId,
+        ...(hubObjectId ? { hub: hubObjectId } : {}),
+      });
+      const product = await Product.findById(created._id)
+        .populate('farmer', 'fullName phone taluka district kycStatus trustScore aadhaarMasked')
+        .populate('hub', 'name taluka district status');
+
+      return res.status(201).json({
+        success: true,
+        message: 'Produce listing published to Taluka marketplace!',
+        product,
+      });
     }
+
+    const newProd = {
+      _id: req.body._id || `prod_${Date.now()}`,
+      farmer: farmerData,
+      ...listingFields,
+      createdAt: new Date().toISOString(),
+    };
+    mockProducts.unshift(newProd);
 
     res.status(201).json({
       success: true,
@@ -194,7 +279,7 @@ export const deleteProduct = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    if (isDatabaseConnected()) {
+    if (isDatabaseConnected() && isMongoId(id)) {
       await Product.findByIdAndDelete(id);
     }
 

@@ -100,5 +100,23 @@ ProductSchema.virtual('transparency', {
 
 ProductSchema.index({ name: 'text', category: 1, locationTaluka: 1 });
 
+const asObjectId = (val) => {
+  if (val == null || val === '') return val;
+  if (val instanceof mongoose.Types.ObjectId) return val;
+  if (typeof val === 'object') {
+    const nested = val._id || val.id;
+    return /^[a-fA-F0-9]{24}$/.test(String(nested)) ? nested : undefined;
+  }
+  return /^[a-fA-F0-9]{24}$/.test(String(val)) ? val : undefined;
+};
+
+ProductSchema.path('farmer').set(asObjectId);
+ProductSchema.path('hub').set(asObjectId);
+ProductSchema.path('_id').set((val) => {
+  if (val instanceof mongoose.Types.ObjectId) return val;
+  if (/^[a-fA-F0-9]{24}$/.test(String(val))) return val;
+  return new mongoose.Types.ObjectId();
+});
+
 const Product = mongoose.model('Product', ProductSchema);
 export default Product;
